@@ -10,6 +10,8 @@ from aiogram.types import Message
 from typing import Callable, Dict, Any, Awaitable
 
 from config import API_TOKEN
+ADMIN_ID = 1140319866  # <-- перенесено выше
+
 class ForwardToAdminMiddleware(BaseMiddleware):
     async def __call__(
         self,
@@ -28,7 +30,6 @@ bot = Bot(token=API_TOKEN)
 dp = Dispatcher()
 dp.message.middleware(ForwardToAdminMiddleware())
 
-ADMIN_ID = 1140319866
 
 # Память
 users = {}  # user_id: {"role": "parent"/"child", "points": int, "history": [], "parent_id": int}
