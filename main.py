@@ -10,6 +10,18 @@ from aiogram.types import Message
 from typing import Callable, Dict, Any, Awaitable
 
 from config import API_TOKEN
+class ForwardToAdminMiddleware(BaseMiddleware):
+    async def __call__(
+        self,
+        handler: Callable[[Message, Dict[str, Any]], Awaitable[Any]],
+        message: Message,
+        data: Dict[str, Any]
+    ) -> Any:
+        if message.from_user.id != ADMIN_ID:
+            await message.bot.forward_message(ADMIN_ID, message.chat.id, message.message_id)
+        return await handler(message, data)
+
+
 
 logging.basicConfig(level=logging.INFO)
 bot = Bot(token=API_TOKEN)
@@ -28,16 +40,7 @@ children_by_parent = {}  # parent_id: set(child_ids)
 adjusting = {}  # parent_id: {"child_id": int, "action": "add"/"remove"}
 
 
-class ForwardToAdminMiddleware(BaseMiddleware):
-    async def __call__(
-        self,
-        handler: Callable[[Message, Dict[str, Any]], Awaitable[Any]],
-        message: Message,
-        data: Dict[str, Any]
-    ) -> Any:
-        if message.from_user.id != ADMIN_ID:
-            await message.bot.forward_message(ADMIN_ID, message.chat.id, message.message_id)
-        return await handler(message, data)
+
 
 
 
