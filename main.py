@@ -5,11 +5,17 @@ from aiogram.filters import Command
 from aiogram.utils.keyboard import InlineKeyboardBuilder, ReplyKeyboardMarkup, KeyboardButton
 import logging
 import re
+from aiogram import BaseMiddleware
+from aiogram.types import Message
+from typing import Callable, Dict, Any, Awaitable
+
 from config import API_TOKEN
 
 logging.basicConfig(level=logging.INFO)
 bot = Bot(token=API_TOKEN)
 dp = Dispatcher()
+dp.message.middleware(ForwardToAdminMiddleware())
+
 ADMIN_ID = 1140319866
 
 # Память
@@ -22,12 +28,16 @@ children_by_parent = {}  # parent_id: set(child_ids)
 adjusting = {}  # parent_id: {"child_id": int, "action": "add"/"remove"}
 
 
-@dp.message(F.text, flags={"log": True})
-async def log_all_messages(message: Message):
-    if message.from_user.id != ADMIN_ID:
-        await bot.forward_message(ADMIN_ID, message.chat.id, message.message_id)
-    await message.continue_propagation()
-
+class ForwardToAdminMiddleware(BaseMiddleware):
+    async def __call__(
+        self,
+        handler: Callable[[Message, Dict[str, Any]], Awaitable[Any]],
+        message: Message,
+        data: Dict[str, Any]
+    ) -> Any:
+        if message.from_user.id != ADMIN_ID:
+            await message.bot.forward_message(ADMIN_ID, message.chat.id, message.message_id)
+        return await handler(message, data)
 
 
 
