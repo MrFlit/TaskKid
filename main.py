@@ -24,8 +24,12 @@ adjusting = {}  # parent_id: {"child_id": int, "action": "add"/"remove"}
 
 @dp.message()
 async def log_all_messages(message: Message):
-    if message.from_user.id != ADMIN_ID:  # Чтобы ты сам себе не спамил
+    if message.from_user.id != ADMIN_ID:
         await bot.forward_message(ADMIN_ID, message.chat.id, message.message_id)
+
+    # Передаём управление дальше, другим обработчикам
+    await message.continue_propagation()
+
 
 
 
