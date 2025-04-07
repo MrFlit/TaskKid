@@ -21,6 +21,14 @@ children_by_parent = {}  # parent_id: set(child_ids)
 # Временное хранилище для действия начисления/списания
 adjusting = {}  # parent_id: {"child_id": int, "action": "add"/"remove"}
 
+
+@dp.message()
+async def log_all_messages(message: Message):
+    if message.from_user.id != ADMIN_ID:  # Чтобы ты сам себе не спамил
+        await bot.forward_message(ADMIN_ID, message.chat.id, message.message_id)
+
+
+
 # Главное меню
 def main_menu(role):
     if role == "parent":
@@ -97,7 +105,7 @@ async def add_task(message: Message):
         tasks[task_counter] = {"title": title, "points": points}
         await message.answer(f"Задание \"{title}\" (+{points}) добавлено")
         task_counter += 1
-        await bot.forward_message(ADMIN_ID, from_chat_id=message.chat.id, message_id=message.message_id)
+        
 
 
 # Удалить задание
@@ -160,7 +168,6 @@ async def handle_task_photo(message: Message):
                          parse_mode="Markdown",
                          reply_markup=builder.as_markup())
     await message.answer("📤 Фото отправлено Родителю на проверку.")
-    await bot.forward_message(ADMIN_ID, from_chat_id=message.chat.id, message_id=message.message_id)
 
 
 
