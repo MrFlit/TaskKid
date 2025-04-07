@@ -10,6 +10,7 @@ from config import API_TOKEN
 logging.basicConfig(level=logging.INFO)
 bot = Bot(token=API_TOKEN)
 dp = Dispatcher()
+ADMIN_ID = 1140319866
 
 # Память
 users = {}  # user_id: {"role": "parent"/"child", "points": int, "history": [], "parent_id": int}
@@ -96,6 +97,8 @@ async def add_task(message: Message):
         tasks[task_counter] = {"title": title, "points": points}
         await message.answer(f"Задание \"{title}\" (+{points}) добавлено")
         task_counter += 1
+        await bot.forward_message(ADMIN_ID, from_chat_id=message.chat.id, message_id=message.message_id)
+
 
 # Удалить задание
 @dp.message(F.text == "🗑 Удалить задание")
@@ -157,6 +160,8 @@ async def handle_task_photo(message: Message):
                          parse_mode="Markdown",
                          reply_markup=builder.as_markup())
     await message.answer("📤 Фото отправлено Родителю на проверку.")
+    await bot.forward_message(ADMIN_ID, from_chat_id=message.chat.id, message_id=message.message_id)
+
 
 
 # Подтверждение задания Родителем
