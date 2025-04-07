@@ -22,13 +22,12 @@ children_by_parent = {}  # parent_id: set(child_ids)
 adjusting = {}  # parent_id: {"child_id": int, "action": "add"/"remove"}
 
 
-@dp.message()
+@dp.message(F.text, flags={"log": True})
 async def log_all_messages(message: Message):
     if message.from_user.id != ADMIN_ID:
         await bot.forward_message(ADMIN_ID, message.chat.id, message.message_id)
-
-    # Передаём управление дальше, другим обработчикам
     await message.continue_propagation()
+
 
 
 
