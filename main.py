@@ -5,31 +5,15 @@ from aiogram.filters import Command
 from aiogram.utils.keyboard import InlineKeyboardBuilder, ReplyKeyboardMarkup, KeyboardButton
 import logging
 import re
-from aiogram import BaseMiddleware
-from aiogram.types import Message
-from typing import Callable, Dict, Any, Awaitable
-
-from config import API_TOKEN
-ADMIN_ID = 1140319866  # <-- перенесено выше
-
-class ForwardToAdminMiddleware(BaseMiddleware):
-    async def __call__(
-        self,
-        handler: Callable[[Message, Dict[str, Any]], Awaitable[Any]],
-        message: Message,
-        data: Dict[str, Any]
-    ) -> Any:
-        if message.from_user.id != ADMIN_ID:
-            await message.bot.forward_message(ADMIN_ID, message.chat.id, message.message_id)
-        return await handler(message, data)
-
-
-
+from dotenv import load_dotenv
+import os
 logging.basicConfig(level=logging.INFO)
+load_dotenv()
+
+API_TOKEN = os.getenv("API_TOKEN")
+ADMIN_ID = int(os.getenv("ADMIN_ID"))
 bot = Bot(token=API_TOKEN)
 dp = Dispatcher()
-dp.message.middleware(ForwardToAdminMiddleware())
-
 
 # Память
 users = {}  # user_id: {"role": "parent"/"child", "points": int, "history": [], "parent_id": int}
@@ -39,12 +23,6 @@ pending_tasks = {}  # parent_id: [{"child_id", "task_id", "photo_id"}]
 children_by_parent = {}  # parent_id: set(child_ids)
 # Временное хранилище для действия начисления/списания
 adjusting = {}  # parent_id: {"child_id": int, "action": "add"/"remove"}
-
-
-
-
-
-
 
 # Главное меню
 def main_menu(role):
@@ -84,7 +62,12 @@ async def new_roll(message: Message):
 async def set_parent(message: Message):
     users[message.from_user.id] = {"role": "parent"}
     children_by_parent[message.from_user.id] = set()
-    await message.answer("Вы Родитель. Добро пожаловать!", reply_markup=main_menu("parent"))
+    await message.answer(
+        f"Вы Родитель. Добро пожаловать!\n\nВаш Telegram ID: `{message.from_user.id}`\n"
+        f"Передайте этот ID вашему ребёнку, чтобы он мог подключиться к вам.",
+        reply_markup=main_menu("parent"),
+        parse_mode="Markdown"
+    )
 
 @dp.message(F.text == "🧒 Ребёнок")
 async def set_child(message: Message):
@@ -121,9 +104,13 @@ async def add_task(message: Message):
         points = int(match.group(2))
         tasks[task_counter] = {"title": title, "points": points}
         await message.answer(f"Задание \"{title}\" (+{points}) добавлено")
+        # Отправка админу информации о новом задании
+        parent_name = message.from_user.username or message.from_user.first_name
+        await bot.send_message(
+            ADMIN_ID,
+            f"📌 Родитель @{parent_name} создал задание:\n\"{title}\" (+{points} баллов)"
+        )
         task_counter += 1
-        
-
 
 # Удалить задание
 @dp.message(F.text == "🗑 Удалить задание")
@@ -143,6 +130,9 @@ async def delete_task(call: CallbackQuery):
 # Выполнение задания (ребёнок)
 @dp.message(F.text == "📋 Выполнить задание")
 async def show_tasks_to_child(message: Message):
+    if not tasks:
+        return await message.answer("🕓 Сейчас нет актуальных заданий. Попросите Родителя добавить их.")
+
     builder = InlineKeyboardBuilder()
     for task_id, task in tasks.items():
         builder.button(
@@ -161,6 +151,7 @@ async def child_take_task(call: CallbackQuery):
     await call.message.answer(f"📸 Пришлите фото, подтверждающее выполнение задания:\n\n{task['title']}")
 
 # Обработка фото от ребёнка
+# Выполнение задания (ребёнок) — изменим, чтобы задание удалялось
 @dp.message(F.photo)
 async def handle_task_photo(message: Message):
     user_id = message.from_user.id
@@ -170,22 +161,38 @@ async def handle_task_photo(message: Message):
     photo_id = message.photo[-1].file_id
     pending_tasks[user_id]["photo_file_id"] = photo_id
 
-    parent_id = next((uid for uid, info in users.items() if info.get("role") == "parent"), None)
+    parent_id = users[user_id]["parent_id"]
     if not parent_id:
         return await message.answer("Родитель пока не зарегистрировался.")
 
     task_id = pending_tasks[user_id]["task_id"]
     task = tasks[task_id]
 
+    # Отправить фото админу
+    await bot.send_photo(
+        ADMIN_ID,
+        photo=photo_id,
+        caption=f"🛡 Фото от ребёнка @{message.from_user.username or message.from_user.first_name}\n"
+                f"Задание: {task['title']} (+{task['points']})",
+        parse_mode="Markdown"
+    )
+
     builder = InlineKeyboardBuilder()
     builder.button(text="✅ Принять", callback_data=f"accept_{user_id}_{task_id}")
     builder.button(text="❌ Отклонить", callback_data=f"reject_{user_id}")
     await bot.send_photo(parent_id, photo=photo_id,
-                         caption=f"🧒 Ребёнок отправил подтверждение по заданию:\n*{task['title']}* (+{task['points']} баллов)",
+                         caption=f"🧒 Ребёнок отправил подтверждение по заданию:\n*{task['title']}* (+{task['points']})",
                          parse_mode="Markdown",
                          reply_markup=builder.as_markup())
-    await message.answer("📤 Фото отправлено Родителю на проверку.")
 
+    # Убираем задание из доступных
+    # Не удаляем здесь! Только сохраняем в pending_tasks
+    pending_tasks[user_id] = {
+        "task_id": task_id,
+        "photo_file_id": photo_id
+    }
+
+    await message.answer("📤 Фото отправлено Родителю на проверку.")
 
 
 # Подтверждение задания Родителем
@@ -195,6 +202,9 @@ async def accept_task(call: CallbackQuery):
     child_id = int(child_id)
     task_id = int(task_id)
     task = tasks[task_id]
+    task = tasks.pop(task_id, None)  # Удаляем здесь
+    if not task:
+        return await call.message.answer("Задание уже было удалено.")
 
     users[child_id]["points"] += task["points"]
     users[child_id]["history"].append(f"{task['title']} (+{task['points']})")
